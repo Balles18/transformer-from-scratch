@@ -126,6 +126,24 @@ class TransformerBlock(nn.Module):
 
         return norm2_out
 
+class TransformerEncoder(nn.Module):
+    
+    def __init__(self, seq_len, vocab_size, embed_dim, num_layers=2, expansion_factor=4, n_heads=8):
+        super(TransformerEncoder, self).__init__()
+
+        self.embedding_layer = Embedding(vocab_size, embed_dim)
+        self.positional_encoder = PositionalEmbedding(seq_len, embed_dim)
+
+        self.layers = nn.ModuleList([TransformerBlock(embed_dim, expansion_factor, n_heads) for i in range(num_layers)])
+
+    def forward(self, x):
+        embed_out = self.embedding_layer(x)
+        out = self.positional_encoder(embed_out)
+        for layer in self.layers:
+            out = layer(out,out,out)
+
+        return out  #32x10x512
+
 class DecoderBlock(nn.Module):
     def __init__(self, embed_dim, expansion_factor=4, n_heads=8):
         super(DecoderBlock, self).__init__()
@@ -179,3 +197,51 @@ class TransformerDecoder(nn.Module):
         out = F.softmax(self.fc_out(x))
 
         return out
+
+class Transformer(nn.Module):
+    def __init__(self, embed_dim, src_vocab_size, target_vocab_size, seq_length,num_layers=2, expansion_factor=4, n_heads=8):
+        super(Transformer, self).__init__()
+
+      
+        self.target_vocab_size = target_vocab_size
+
+        self.encoder = TransformerEncoder(seq_length, src_vocab_size, embed_dim, num_layers=num_layers, expansion_factor=expansion_factor, n_heads=n_heads)
+        self.decoder = TransformerDecoder(target_vocab_size, embed_dim, seq_length, num_layers=num_layers, expansion_factor=expansion_factor, n_heads=n_heads)
+
+
+    def make_trg_mask(self, trg):
+        
+        batch_size, trg_len = trg.shape
+        # returns the lower triangular part of matrix filled with ones
+        trg_mask = torch.tril(torch.ones((trg_len, trg_len))).expand(
+            batch_size, 1, trg_len, trg_len
+        )
+        return trg_mask
+
+    def decode(self,src,trg):
+        
+        trg_mask = self.make_trg_mask(trg)
+        enc_out = self.encoder(src)
+        out_labels = []
+        batch_size,seq_len = src.shape[0],src.shape[1]
+        #outputs = torch.zeros(seq_len, batch_size, self.target_vocab_size)
+        out = trg
+        for i in range(seq_len): #10
+            out = self.decoder(out,enc_out,trg_mask) #bs x seq_len x vocab_dim
+            # taking the last token
+            out = out[:,-1,:]
+
+            out = out.argmax(-1)
+            out_labels.append(out.item())
+            out = torch.unsqueeze(out,axis=0)
+
+
+        return out_labels
+
+    def forward(self, src, trg):
+        
+        trg_mask = self.make_trg_mask(trg)
+        enc_out = self.encoder(src)
+
+        outputs = self.decoder(trg, enc_out, trg_mask)
+        return outputs
