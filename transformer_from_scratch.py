@@ -32,15 +32,15 @@ class PositionalEmbedding(nn.Module):
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
-        def forward(self, x):
-            x = x * math.sqrt(self.embed_dim)
-            seq_len = x.size(1)
-            x = x + torch.autograd.Variable(self.pe[:, :seq_len], requires_grad=False)
-            return x
+    def forward(self, x):
+        x = x * math.sqrt(self.embed_dim)
+        seq_len = x.size(1)
+        x = x + torch.autograd.Variable(self.pe[:, :seq_len], requires_grad=False)
+        return x
         
-class MultiheadAttention(nn.Module):
+class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim = 512, n_heads = 8):
-        super(MultiheadAttention, self).__init__()
+        super(MultiHeadAttention, self).__init__()
         self.embed_dim = embed_dim
         self.n_heads = n_heads
         self.single_head_dim = int(self.embed_dim / self.n_heads)
@@ -51,55 +51,55 @@ class MultiheadAttention(nn.Module):
 
         self.out = nn.Linear(self.n_heads * self.single_head_dim, self.embed_dim)
 
-        def forward(self, query, key, value, mask=None): 
-            batch_size = key.size(0)
-            seq_len = key.size(1)
+    def forward(self, key, query, value, mask=None): 
+        batch_size = key.size(0)
+        seq_length = key.size(1)
 
-            seq_len_query = query.size(1)
+        seq_length_query = query.size(1)
 
-            #32*10*512 -> 32*10*8*512
+        #32*10*512 -> 32*10*8*512
 
-            key = key.view(batch_size, seq_len, self.n_heads, self.single_head_dim)
+        key = key.view(batch_size, seq_length, self.n_heads, self.single_head_dim)
 
-            query = query.view(batch_size, seq_len, self.n_heads, self.single_head_dim)
+        query = query.view(batch_size, seq_length_query, self.n_heads, self.single_head_dim)
 
-            value = value.view(batch_size, seq_len, self.n_heads, self.single_head_dim)
+        value = value.view(batch_size, seq_length, self.n_heads, self.single_head_dim)
 
-            k = self.key_matrix(key)
-            q = self.query_matrix(query)
-            v = self.value_matrix(value)
+        k = self.key_matrix(key)
+        q = self.query_matrix(query)
+        v = self.value_matrix(value)
 
-            #32*10*8*512 -> 32*8*10*512
+        #32*10*8*512 -> 32*8*10*512
 
-            k = k.transpose(1, 2)
-            q = q.transpose(1, 2)       
-            v = v.transpose(1, 2)
+        k = k.transpose(1, 2)
+        q = q.transpose(1, 2)       
+        v = v.transpose(1, 2)
 
-            k_adjusted = k.trasnpose(-1, -2)
-            product = torch.matmul(q, k_adjusted)
+        k_adjusted = k.transpose(-1, -2)
+        product = torch.matmul(q, k_adjusted)
 
-            if mask is not None:
-                product = product.masked_fill(mask == 0, float('-1e9'))
-            
-            product = product / math.sqrt(self.single_head_dim)
+        if mask is not None:
+            product = product.masked_fill(mask == 0, float("-1e20"))
+        
+        product = product / math.sqrt(self.single_head_dim)
 
-            scores = F.softmax(product, dim=-1)
+        scores = F.softmax(product, dim=-1)
 
-            scores = torch.matmul(scores, v)
+        scores = torch.matmul(scores, v)
 
-            concat = scores.transpose(1, 2).contiguous().view(batch_size, seq_len_query, self.n_heads * self.single_head_dim)
+        concat = scores.transpose(1, 2).contiguous().view(batch_size, seq_length_query, self.single_head_dim*self.n_heads)
 
-            #32*8*10*64 -> 32*10*8*64 ->32*10*512
+        #32*8*10*64 -> 32*10*8*64 ->32*10*512
 
-            out = self.out(concat) # 32*10*512
+        output = self.out(concat) # 32*10*512
 
-            return out
+        return output
 
 class TransformerBlock(nn.Module):
     def __init__(self, embed_dim, expansion_factor=4, n_heads=8):
         super(TransformerBlock, self).__init__()
 
-        self.attention = MultiheadAttention(embed_dim, n_heads)
+        self.attention = MultiHeadAttention(embed_dim, n_heads)
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
 
@@ -112,8 +112,8 @@ class TransformerBlock(nn.Module):
         self.dropout1 = nn.Dropout(0.2)
         self.dropout2 = nn.Dropout(0.2)
 
-    def forward(self, key, value, query):
-        attention_out = self.attention(query, key, value) # 32*10*512
+    def forward(self,key,query,value):
+        attention_out = self.attention(key,query,value) # 32*10*512
         attention_residual_out = attention_out + value # 32*10*512
 
         norm1_out = self.dropout1(self.norm1(attention_residual_out)) # 32*10*512
@@ -148,7 +148,7 @@ class DecoderBlock(nn.Module):
     def __init__(self, embed_dim, expansion_factor=4, n_heads=8):
         super(DecoderBlock, self).__init__()
 
-        self.attention = MultiheadAttention(embed_dim, n_heads=8)
+        self.attention = MultiHeadAttention(embed_dim, n_heads=8)
         self.norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(0.2)
         self.transformer_block = TransformerBlock(embed_dim, expansion_factor, n_heads)
@@ -219,7 +219,14 @@ class Transformer(nn.Module):
         return trg_mask
 
     def decode(self,src,trg):
-        
+        """
+        for inference
+        Args:
+            src: input to encoder
+            trg: input to decoder
+        out:
+            out_labels : returns final prediction of sequence
+        """
         trg_mask = self.make_trg_mask(trg)
         enc_out = self.encoder(src)
         out_labels = []
@@ -245,3 +252,37 @@ class Transformer(nn.Module):
 
         outputs = self.decoder(trg, enc_out, trg_mask)
         return outputs
+    
+src_vocab_size = 11
+target_vocab_size = 11
+num_layers = 6
+seq_length= 12
+
+
+# let 0 be sos token and 1 be eos token
+src = torch.tensor([[0, 2, 5, 6, 4, 3, 9, 5, 2, 9, 10, 1],
+                    [0, 2, 8, 7, 3, 4, 5, 6, 7, 2, 10, 1]])
+target = torch.tensor([[0, 1, 7, 4, 3, 5, 9, 2, 8, 10, 9, 1],
+                       [0, 1, 5, 6, 2, 4, 7, 6, 2, 8, 10, 1]])
+
+print(src.shape,target.shape)
+model = Transformer(embed_dim=512, src_vocab_size=src_vocab_size,
+                    target_vocab_size=target_vocab_size, seq_length=seq_length,
+                    num_layers=num_layers, expansion_factor=4, n_heads=8)
+
+out = model(src, target)
+print(out.shape)
+
+# inference
+model = Transformer(embed_dim=512, src_vocab_size=src_vocab_size,
+                    target_vocab_size=target_vocab_size, seq_length=seq_length,
+                    num_layers=num_layers, expansion_factor=4, n_heads=8)
+
+
+
+src = torch.tensor([[0, 2, 5, 6, 4, 3, 9, 5, 2, 9, 10, 1]])
+trg = torch.tensor([[0]])
+print(src.shape,trg.shape)
+out = model.decode(src, trg)
+print(out)  # Output the predicted sequence of tokens
+
