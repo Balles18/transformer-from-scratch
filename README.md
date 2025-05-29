@@ -53,14 +53,6 @@ The project aims to deepen the understanding of how Transformers work internally
 - The code currently implements a full feed-forward pass of the Transformer model.
 - Future updates may include training loops, loss functions, and more advanced features.
 
----
-
-## 📚 Resources for Further Study
-
-- [Attention is All You Need - Paper](https://arxiv.org/abs/1706.03762)
-- [The Illustrated Transformer by Jay Alammar](http://jalammar.github.io/illustrated-transformer/)
-- [The AI Summer: Understanding Transformers](https://theaisummer.com/transformer/)
-- [YouTube - Transformer Implementation in PyTorch](https://www.youtube.com/watch?v=U0s0f995w14)
 
 ---
 
